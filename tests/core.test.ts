@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { matchTerms, makeMessages, translate, detectLanguage, gatewayModels } from '../src/main/core'
+import { matchTerms, makeMessages, translate, detectLanguage, gatewayModels, SYSTEM_PROMPT } from '../src/main/core'
 
 describe('translation core', () => {
   it('keeps input data out of system instructions and selects relevant terms', () => {
@@ -92,6 +92,7 @@ describe('translation core', () => {
     expect(fetcher).toHaveBeenCalledTimes(1)
     const body = JSON.parse(fetcher.mock.calls[0][1].body as string)
     expect(body.messages[0].role).toBe('system')
+    expect(body.messages[0].content).toBe(SYSTEM_PROMPT)
     expect(body.messages[0].content).toContain('不增译、不漏译')
     expect(body.messages[0].content).toContain('禁止推测缺失信息')
     expect(JSON.parse(body.messages[1].content).source_text).toBe('The specimen was negative.')

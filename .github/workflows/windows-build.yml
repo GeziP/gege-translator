@@ -41,7 +41,19 @@ jobs:
       - run: npx electron-builder --win --x64 --publish never
       - name: Smoke test installed app
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          $previous = Join-Path $env:RUNNER_TEMP 'previous-setup'
+          New-Item -ItemType Directory -Path $previous | Out-Null
+          gh release download v0.1.0-beta.4 --repo GeziP/gege-translator --pattern '*-Setup.exe' --dir $previous
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download previous installer' }
+          $oldInstaller = Get-ChildItem "$previous/*-Setup.exe" | Select-Object -First 1
+          $oldInstall = Start-Process -FilePath $oldInstaller.FullName -ArgumentList '/S' -WindowStyle Hidden -PassThru -Wait
+          if ($oldInstall.ExitCode -ne 0) { throw 'Previous version installation failed' }
+          $dataPath = Join-Path $env:APPDATA 'gege-translator'
+          New-Item -ItemType Directory -Force -Path $dataPath | Out-Null
+          Set-Content -LiteralPath (Join-Path $dataPath 'terms.json') -Value '[{"source":"example","target":"示例","meaning":"","domain":"ivd","sourceLanguage":"en","targetLanguage":"zh-CN"}]' -Encoding utf8
           $installer = Get-ChildItem release/*-Setup.exe | Select-Object -First 1
           $install = Start-Process -FilePath $installer.FullName -ArgumentList "/S" -WindowStyle Hidden -PassThru -Wait
           if ($install.ExitCode -ne 0) { throw "Installer failed: $($install.ExitCode)" }
@@ -49,6 +61,8 @@ jobs:
           if (-not $app) { throw "Installed executable not found" }
           $run = Start-Process -FilePath $app.FullName -ArgumentList "--smoke-test" -WindowStyle Hidden -PassThru -Wait
           if ($run.ExitCode -ne 0) { throw "Installed app failed: $($run.ExitCode)" }
+          $terms = Get-Content -LiteralPath (Join-Path $dataPath 'terms.json') -Raw | ConvertFrom-Json
+          if ($terms[0].source -ne 'example') { throw 'Existing glossary was not preserved' }
       - uses: actions/upload-artifact@v4
         with:
           name: gege-translator-windows

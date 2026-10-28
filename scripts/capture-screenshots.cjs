@@ -11,6 +11,13 @@ app.whenReady().then(async () => {
   await mkdir(output, { recursive: true })
   const win = new BrowserWindow({ width: 1440, height: 980, show: true, webPreferences: { preload: join(__dirname, 'screenshot-preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true } })
   await win.loadFile(join(process.cwd(), 'out', 'renderer', 'index.html'))
+  await win.webContents.executeJavaScript(`(() => {
+    const profile = { model: 'glm-5.3-flash', contextTokens: '1000000', maxOutputTokens: '8192' };
+    localStorage.setItem('model-profiles', JSON.stringify({ glm: profile }));
+    localStorage.setItem('saved-models', JSON.stringify([{ provider: 'glm', profile }]));
+  })()`)
+  await new Promise(resolve => { win.webContents.once('did-finish-load', resolve); win.webContents.reload() })
+  win.webContents.setZoomFactor(0.8)
   await new Promise(resolve => setTimeout(resolve, 500))
   await win.webContents.executeJavaScript(`(() => {
     const fields = document.querySelectorAll('.pane textarea');
@@ -19,6 +26,8 @@ app.whenReady().then(async () => {
     fields[0].dispatchEvent(new Event('input', { bubbles: true }));
     set.call(fields[1], 'The limit of detection is 0.05 ng/mL. A negative result does not rule out infection.');
     fields[1].dispatchEvent(new Event('input', { bubbles: true }));
+    const domain = document.querySelector('.toolbar select');
+    domain.value = 'ivd'; domain.dispatchEvent(new Event('change', { bubbles: true }));
   })()`)
   await new Promise(resolve => setTimeout(resolve, 300))
   await writeFile(join(output, 'translation.png'), (await win.webContents.capturePage()).toPNG())
