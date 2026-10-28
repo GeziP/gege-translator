@@ -49,7 +49,11 @@ function App() {
       const result = await window.desktop.translate(id, { text, source: detected, target, domain, context, provider, model, contextTokens: Number(contextTokens), maxOutputTokens: Number(maxOutputTokens) })
       if (active.current !== id) return
       if (result.status === 'completed') { setOutput(result.text); setStatus('已完成') }
-      else setStatus(`未完成：${({ credentials: '请检查 API Key', rate_limit: '请求过于频繁，请稍后手动重试', truncated: '输出被截断，请缩短原文', budget: '请填写模型上下文及输出上限，或缩短原文', invalid_input: '输入或设置无效', network: '网络连接失败', provider: '模型服务请求失败', cancelled: '已取消' } as Record<string, string>)[result.error || ''] || '服务未返回完整译文'}。现有译文可能属于之前的原文。`)
+      else {
+        const message = ({ credentials: 'API Key 验证失败，请检查所选服务商的 Key', balance: provider === 'glm' ? '智谱标准 API 余额或资源包不足；Coding Plan 额度不适用于本应用' : 'API 余额不足，请检查服务商账户', plan_key: '此 Key 仅限编程套餐，请使用标准 API Key', quota: '服务商报告额度、套餐或模型权限受限，请检查账户', model: '模型不存在，请检查模型 ID', rate_limit: '服务商报告请求频率或并发超限', busy: '模型当前繁忙，请稍后手动重试', rejected: '服务商拒绝了请求，可能与额度、权限或请求限制有关，请检查账户', truncated: '输出被截断，请缩短原文', budget: '请填写模型上下文及输出上限，或缩短原文', invalid_input: '输入或设置无效', network: '网络连接失败', provider: '模型服务请求失败，请检查模型和账户配置', cancelled: '已取消' } as Record<string, string>)[result.error || ''] || '服务未返回完整译文'
+        const detail = [result.httpStatus ? `HTTP ${result.httpStatus}` : '', result.code ? `错误码 ${result.code}` : ''].filter(Boolean).join('，')
+        setStatus(`未完成：${message}${detail ? `（${detail}）` : ''}。${output ? '现有译文可能属于之前的原文。' : ''}`)
+      }
     } catch { if (active.current === id) setStatus('请求失败，请检查设置与网络。现有译文可能属于之前的原文。') }
     finally { if (active.current === id) { active.current = null; setBusy(false) } }
   }

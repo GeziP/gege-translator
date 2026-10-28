@@ -2,7 +2,7 @@ export type Language = 'zh-CN' | 'en'
 export type Domain = 'general' | 'ivd' | 'computing' | 'internet'
 export type Term = { source: string; target: string; meaning: string; domain: Domain; sourceLanguage: Language; targetLanguage: Language }
 export type Request = { text: string; source: Language; target: Language; domain: Domain; context: string; provider: 'glm' | 'deepseek'; model: string; key: string; contextTokens?: number; maxOutputTokens?: number }
-export type Result = { status: 'completed' | 'incomplete' | 'cancelled'; text: string; error?: string; usage?: unknown }
+export type Result = { status: 'completed' | 'incomplete' | 'cancelled'; text: string; error?: string; code?: string; httpStatus?: number; usage?: unknown }
 
 // These examples are provisional; formal release requires independently reviewed terminology.
 export const TERMS: Term[] = [
@@ -18,8 +18,13 @@ export const TERMS: Term[] = [
 
 export function detectLanguage(text: string): Language | null {
   const clean = text.replace(/```[\s\S]*?```|`[^`]*`|https?:\/\/\S+/g, '')
-  const zh = /[\u3400-\u9fff]/u.test(clean), en = /[a-z]/i.test(clean)
-  return zh === en ? null : zh ? 'zh-CN' : 'en'
+  const zh = (clean.match(/[\u3400-\u9fff]/gu) || []).length
+  const en = (clean.match(/[a-z]/gi) || []).length
+  if (!zh || !en) return zh ? 'zh-CN' : en ? 'en' : null
+  // shortcut: character ratios can misclassify balanced bilingual passages; use manual selection when uncertain.
+  if (zh >= 4 && zh * 3 >= en) return 'zh-CN'
+  if (en >= 16 && zh * 8 < en) return 'en'
+  return null
 }
 export function matchTerms(text: string, source: Language, target: Language, domain: Domain, terms: Term[] = TERMS, personal: Term[] = []): Term[] {
   const entryKey = (t: Term) => [t.source.toLocaleLowerCase(), t.sourceLanguage, t.targetLanguage, t.domain, t.meaning].join('\0')
@@ -54,7 +59,24 @@ export async function translate(request: Request, signal: AbortSignal, fetcher: 
   const url = request.provider === 'glm' ? 'https://open.bigmodel.cn/api/paas/v4/chat/completions' : 'https://api.deepseek.com/chat/completions'
   try {
     const response = await fetcher(url, { method: 'POST', signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${request.key}` }, body: JSON.stringify({ model: request.model, max_tokens: request.maxOutputTokens, ...(request.provider === 'deepseek' ? { thinking: { type: 'disabled' } } : {}), messages: [{ role: 'system', content: messages.system }, { role: 'user', content: messages.user }] }) })
-    if (!response.ok) return { status: 'incomplete', text: '', error: response.status === 429 ? 'rate_limit' : response.status === 401 ? 'credentials' : 'provider' }
+    if (!response.ok) {
+      let code: string | undefined
+      try {
+        const body = await response.json() as { error?: { code?: unknown } }
+        const value = String(body?.error?.code ?? '')
+        if (/^\d{1,6}$/.test(value)) code = value
+      } catch { /* The status is still useful when the response is not JSON. */ }
+      const glm = request.provider === 'glm'
+      const error = glm && code === '1113' || !glm && response.status === 402 ? 'balance'
+        : glm && code === '1211' ? 'model'
+        : glm && code === '1315' ? 'plan_key'
+        : glm && ['1308', '1309', '1310', '1311', '1313', '1314', '1316', '1317', '1318', '1319', '1320', '1321'].includes(code || '') ? 'quota'
+        : glm && code === '1305' ? 'busy'
+        : glm && code === '1302' || !glm && response.status === 429 ? 'rate_limit'
+        : response.status === 401 ? 'credentials'
+        : response.status === 429 ? 'rejected' : 'provider'
+      return { status: 'incomplete', text: '', error, ...(code ? { code } : {}), httpStatus: response.status }
+    }
     const data = await response.json() as { choices?: { finish_reason?: string; message?: { content?: string; refusal?: string } }[]; usage?: unknown }
     const choice = data.choices?.[0], text = typeof choice?.message?.content === 'string' ? choice.message.content : ''
     if (choice?.message?.refusal) return { status: 'incomplete', text, error: 'refused' }

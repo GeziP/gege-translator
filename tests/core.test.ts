@@ -27,6 +27,12 @@ describe('translation core', () => {
     expect(detectLanguage('This 是 mixed')).toBe(null)
     expect(detectLanguage('只包含中文')).toBe('zh-CN')
   })
+  it('detects Chinese instructions containing device names and filenames', () => {
+    const text = 'a) SimoaDX 27120004仪器上的STM32F4系列的板子，找到后将ISP跳帽接上，并按下板子的复位按钮，使其进入ISP烧写模式；\nb) 使用FlashMagic 2.0软件，选择通道1，然后选择自动识别出的串口端口；\nc) 在固件选择栏，选择 PC_bootloader_stm32f407vetx_dist_r26.hex；\nd) 点击开始烧写按钮；'
+    expect(detectLanguage(text)).toBe('zh-CN')
+    expect(detectLanguage('Please install 软件 and restart the device.')).toBe('en')
+    expect(detectLanguage('Model STM32F4')).toBe('en')
+  })
   it('makes one request and reports truncation without retrying', async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ finish_reason: 'length', message: { content: '部分' } }] }), { status: 200 }))
     const result = await translate({ text: 'Test', source: 'en', target: 'zh-CN', domain: 'general', context: '', provider: 'deepseek', model: 'test', key: 'secret', contextTokens: 32000, maxOutputTokens: 8192 }, new AbortController().signal, fetcher)
@@ -41,5 +47,19 @@ describe('translation core', () => {
     const fetcher = vi.fn()
     await translate({ text: ' ', source: 'en', target: 'zh-CN', domain: 'general', context: '', provider: 'deepseek', model: 'test', key: 'secret' }, new AbortController().signal, fetcher)
     expect(fetcher).not.toHaveBeenCalled()
+  })
+  it('distinguishes GLM insufficient balance from rate limiting without leaking server content', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: '1113', message: 'secret source text' } }), { status: 429 }))
+    const result = await translate({ text: 'test', source: 'en', target: 'zh-CN', domain: 'general', context: '', provider: 'glm', model: 'test', key: 'secret', contextTokens: 32000, maxOutputTokens: 8192 }, new AbortController().signal, fetcher)
+    expect(result.error).toBe('balance')
+    expect(result.code).toBe('1113')
+    expect(JSON.stringify(result)).not.toContain('secret')
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+  it('does not mislabel an unknown GLM 429 as definite throttling', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: '9999' } }), { status: 429 }))
+    const result = await translate({ text: 'test', source: 'en', target: 'zh-CN', domain: 'general', context: '', provider: 'glm', model: 'test', key: 'secret', contextTokens: 32000, maxOutputTokens: 8192 }, new AbortController().signal, fetcher)
+    expect(result.error).toBe('rejected')
+    expect(result.code).toBe('9999')
   })
 })
