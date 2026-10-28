@@ -22,7 +22,22 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Smoke test desktop startup
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath "node_modules/electron/dist/electron.exe" -ArgumentList "out/main/index.js", "--smoke-test" -WindowStyle Hidden -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "Desktop startup failed: $($process.ExitCode)" }
       - run: npx electron-builder --win --x64 --publish never
+      - name: Smoke test installed app
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem release/*-Setup.exe | Select-Object -First 1
+          $install = Start-Process -FilePath $installer.FullName -ArgumentList "/S" -WindowStyle Hidden -PassThru -Wait
+          if ($install.ExitCode -ne 0) { throw "Installer failed: $($install.ExitCode)" }
+          $app = Get-ChildItem "$env:LOCALAPPDATA/Programs" -Filter "Gege Translator.exe" -Recurse | Select-Object -First 1
+          if (-not $app) { throw "Installed executable not found" }
+          $run = Start-Process -FilePath $app.FullName -ArgumentList "--smoke-test" -WindowStyle Hidden -PassThru -Wait
+          if ($run.ExitCode -ne 0) { throw "Installed app failed: $($run.ExitCode)" }
       - uses: actions/upload-artifact@v4
         with:
           name: gege-translator-windows

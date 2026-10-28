@@ -3,9 +3,6 @@
   "version": "0.1.0-beta.1",
   "description": "专业领域中英翻译桌面工具",
   "main": "./out/main/index.js",
-  "directories": {
-    "doc": "docs"
-  },
   "scripts": {
     "test": "vitest run tests/core.test.ts tests/settings.test.ts && node --test tests/smoke.test.mjs",
     "dev": "electron-vite dev",

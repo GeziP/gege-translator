@@ -45,8 +45,6 @@ function registerHandlers() {
         return { persisted: true }
       } catch { /* Fall back to session-only storage. */ }
     }
-    const data = await readStore()
-    if (data[provider]) { delete data[provider]; await saveStore(data) }
     keys.set(provider, key)
     return { persisted: false }
   })
@@ -82,6 +80,16 @@ app.whenReady().then(() => {
   window = new BrowserWindow({ width: 1280, height: 820, minWidth: 840, minHeight: 620, title: '译间', webPreferences: { preload: join(__dirname, '../preload/index.js'), nodeIntegration: false, contextIsolation: true, sandbox: true } })
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', event => event.preventDefault())
+  if (process.argv.includes('--smoke-test')) {
+    const timeout = setTimeout(() => app.exit(1), 30000)
+    window.webContents.once('did-finish-load', async () => {
+      try {
+        const loaded = await window!.webContents.executeJavaScript("new Promise(resolve => setTimeout(() => resolve(Boolean(document.querySelector('textarea')) && typeof window.desktop?.translate === 'function'), 500))")
+        clearTimeout(timeout)
+        app.exit(loaded ? 0 : 1)
+      } catch { clearTimeout(timeout); app.exit(1) }
+    })
+  }
   if (process.env.ELECTRON_RENDERER_URL) window.loadURL(process.env.ELECTRON_RENDERER_URL)
   else window.loadFile(join(__dirname, '../renderer/index.html'))
 })

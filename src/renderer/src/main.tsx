@@ -30,7 +30,10 @@ function App() {
   useEffect(() => { window.desktop.keyStatus().then(setSaved) }, [])
   useEffect(() => { localStorage.setItem('provider', provider); localStorage.setItem('model-profiles', JSON.stringify(profiles)) }, [provider, profiles])
   const updateProfile = (field: 'model' | 'contextTokens' | 'maxOutputTokens', value: string) => setProfiles(previous => saveProfile(previous, provider, { ...previous[provider], [field]: value }))
-  const invalidate = () => { if (active.current) { window.desktop.cancel(active.current); active.current = null; setBusy(false); setStatus('已取消；现有译文可能属于之前的原文') } }
+  const invalidate = () => {
+    if (active.current) { window.desktop.cancel(active.current); active.current = null; setBusy(false); setStatus('已取消；现有译文可能属于之前的原文') }
+    else if (output) setStatus('内容或设置已更改；现有译文属于之前的任务')
+  }
   const run = async () => {
     const detected = source === 'auto' ? detectLanguage(text) : source
     if (!text.trim() || Array.from(text).length > 12000) { setStatus('请输入不超过 12,000 字符的原文'); return }
@@ -49,7 +52,7 @@ function App() {
   }
   const save = async () => {
     if (!key.trim()) { setStatus('请输入 API Key'); return }
-    try { const result = await window.desktop.saveKey(provider, key.trim(), persist); setKey(''); setSaved(await window.desktop.keyStatus()); setStatus(result.persisted ? '密钥已保存' : '密钥仅本次运行有效') } catch { setStatus('保存失败，请重试') }
+    try { const result = await window.desktop.saveKey(provider, key.trim(), persist); setKey(''); setSaved(await window.desktop.keyStatus()); setStatus(result.persisted ? '密钥已保存' : '新密钥仅本次有效，原保存密钥未更改') } catch { setStatus('保存失败，请重试') }
   }
   return <div className="app">
     <header><div className="brand"><span className="brand-icon">译</span><div><strong>译间</strong><small>TRANSLATION STUDIO</small></div></div><div><button className="settings-button" onClick={() => setShowTerms(true)}>个人术语</button>　<button className="settings-button" onClick={() => setSettings(!settings)} aria-expanded={settings}>⚙　模型设置</button></div></header>
