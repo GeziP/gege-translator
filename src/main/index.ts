@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, safeStorage, session, dialog } from 'electron'
 import { join } from 'node:path'
 import { readFile, writeFile, rename, stat } from 'node:fs/promises'
-import { translate, type Request, type Term } from './core'
+import { gatewayModels, translate, type Request, type Term } from './core'
 import { parseGlossary, serializeGlossary, termKey, validateTerm } from './glossary'
 import { serialWrites } from './writes'
 
@@ -12,7 +12,7 @@ const enqueueWrite = serialWrites()
 let preview: { token: string; entries: Term[]; previous: string } | null = null
 const storePath = () => join(app.getPath('userData'), 'credentials.json')
 const termsPath = () => join(app.getPath('userData'), 'terms.json')
-const validProvider = (provider: string): provider is Request['provider'] => provider === 'glm' || provider === 'deepseek'
+const validProvider = (provider: string): provider is Request['provider'] => provider === 'glm' || provider === 'deepseek' || provider === 'cherry'
 
 async function readStore(): Promise<Record<string, string>> {
   try { return JSON.parse(await readFile(storePath(), 'utf8')) as Record<string, string> } catch (error) {
@@ -24,6 +24,13 @@ async function saveStore(data: Record<string, string>) {
   const path = storePath(), temp = `${path}.${crypto.randomUUID()}.tmp`
   await writeFile(temp, JSON.stringify(data), { flag: 'wx' })
   await rename(temp, path)
+}
+async function readKey(provider: Request['provider']): Promise<string | undefined> {
+  const existing = keys.get(provider)
+  if (existing) return existing
+  const data = await readStore()
+  if (data[provider] && await safeStorage.isAsyncEncryptionAvailable()) return (await safeStorage.decryptStringAsync(Buffer.from(data[provider], 'base64'))).result
+  return undefined
 }
 async function loadTerms(): Promise<Term[]> {
   try { const value: unknown = JSON.parse(await readFile(termsPath(), 'utf8')); if (!Array.isArray(value)) throw new Error('Invalid terms'); return value as Term[] }
@@ -54,7 +61,11 @@ function registerHandlers() {
     return { persisted: false }
   })
   handle('key-status', async () => {
-    try { const data = await readStore(); return { glm: Boolean(data.glm || keys.get('glm')), deepseek: Boolean(data.deepseek || keys.get('deepseek')) } } catch { return { glm: Boolean(keys.get('glm')), deepseek: Boolean(keys.get('deepseek')) } }
+    try { const data = await readStore(); return { glm: Boolean(data.glm || keys.get('glm')), deepseek: Boolean(data.deepseek || keys.get('deepseek')), cherry: Boolean(data.cherry || keys.get('cherry')) } } catch { return { glm: Boolean(keys.get('glm')), deepseek: Boolean(keys.get('deepseek')), cherry: Boolean(keys.get('cherry')) } }
+  })
+  handle('gateway-models', async (port: number) => {
+    try { const key = await readKey('cherry'); if (!key) return { error: 'credentials' }; return { models: await gatewayModels(port, key) } }
+    catch { return { error: 'gateway' } }
   })
   handle('delete-key', async (provider: string) => {
     if (!validProvider(provider)) throw new Error('Invalid provider')
@@ -96,10 +107,8 @@ function registerHandlers() {
   })
   handle('translate', async (id: string, request: Omit<Request, 'key'>) => {
     if (typeof id !== 'string' || id.length > 100 || tasks.has(id) || !request || !validProvider(request.provider) || typeof request.text !== 'string' || typeof request.model !== 'string' || typeof request.context !== 'string' || !['en', 'zh-CN'].includes(request.source) || !['en', 'zh-CN'].includes(request.target) || !['general', 'ivd', 'computing', 'internet'].includes(request.domain)) return { status: 'incomplete', text: '', error: 'invalid_input' }
-    let key = keys.get(request.provider)
-    if (!key) {
-      try { const data = await readStore(); if (data[request.provider] && await safeStorage.isAsyncEncryptionAvailable()) key = (await safeStorage.decryptStringAsync(Buffer.from(data[request.provider], 'base64'))).result } catch { return { status: 'incomplete', text: '', error: 'credentials' } }
-    }
+    let key: string | undefined
+    try { key = await readKey(request.provider) } catch { return { status: 'incomplete', text: '', error: 'credentials' } }
     if (!key) return { status: 'incomplete', text: '', error: 'credentials' }
     const controller = new AbortController(); tasks.set(id, controller)
     const timer = setTimeout(() => controller.abort(), 90000)

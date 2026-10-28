@@ -1,7 +1,7 @@
 export type Language = 'zh-CN' | 'en'
 export type Domain = 'general' | 'ivd' | 'computing' | 'internet'
 export type Term = { source: string; target: string; meaning: string; domain: Domain; sourceLanguage: Language; targetLanguage: Language }
-export type Request = { text: string; source: Language; target: Language; domain: Domain; context: string; provider: 'glm' | 'deepseek'; model: string; key: string; contextTokens?: number; maxOutputTokens?: number }
+export type Request = { text: string; source: Language; target: Language; domain: Domain; context: string; provider: 'glm' | 'deepseek' | 'cherry'; model: string; key: string; gatewayPort?: number; contextTokens?: number; maxOutputTokens?: number }
 export type Result = { status: 'completed' | 'incomplete' | 'cancelled'; text: string; error?: string; code?: string; httpStatus?: number; usage?: unknown }
 
 // These examples are provisional; formal release requires independently reviewed terminology.
@@ -49,16 +49,24 @@ export function makeMessages(request: Pick<Request, 'text' | 'source' | 'target'
   const domain = { general: '通用', ivd: 'IVD：区分分析与临床性能、精密度与准确度', computing: '计算机：保留标识符与代码，按语境选术语', internet: '互联网：保留指标口径、比例与百分点' }[request.domain]
   return { system: SYSTEM_PROMPT, user: JSON.stringify({ source_language: request.source, target_language: request.target, domain, ...(request.context ? { context: request.context } : {}), terms: terms.map(({ source, target, meaning }) => ({ source, target, meaning })), source_text: request.text }) }
 }
+export async function gatewayModels(port: number, key: string, fetcher: typeof fetch = fetch): Promise<string[]> {
+  if (!Number.isInteger(port) || port < 1000 || port > 65535 || !key) throw new Error('Invalid gateway configuration')
+  const response = await fetcher(`http://127.0.0.1:${port}/v1/models`, { headers: { Authorization: `Bearer ${key}` }, redirect: 'error', signal: AbortSignal.timeout(5000) })
+  if (!response.ok) throw new Error('Gateway unavailable')
+  const body = await response.json() as { data?: { id?: unknown }[] }
+  if (!Array.isArray(body.data)) throw new Error('Invalid gateway response')
+  return body.data.flatMap(item => typeof item.id === 'string' && item.id.length <= 200 ? [item.id] : []).slice(0, 200)
+}
 export async function translate(request: Request, signal: AbortSignal, fetcher: typeof fetch = fetch, personal: Term[] = []): Promise<Result> {
-  if (!['glm', 'deepseek'].includes(request.provider) || !request.text.trim() || Array.from(request.text).length > 12000 || request.source === request.target || !request.model.trim() || !request.key) return { status: 'incomplete', text: '', error: 'invalid_input' }
+  if (!['glm', 'deepseek', 'cherry'].includes(request.provider) || !request.text.trim() || Array.from(request.text).length > 12000 || request.source === request.target || !request.model.trim() || !request.key || (request.provider === 'cherry' && (!Number.isInteger(request.gatewayPort) || request.gatewayPort! < 1000 || request.gatewayPort! > 65535))) return { status: 'incomplete', text: '', error: 'invalid_input' }
   const messages = makeMessages(request, matchTerms(request.text, request.source, request.target, request.domain, TERMS, personal))
   if (!Number.isSafeInteger(request.contextTokens) || !Number.isSafeInteger(request.maxOutputTokens) || (request.contextTokens || 0) <= 0 || (request.maxOutputTokens || 0) <= 0) return { status: 'incomplete', text: '', error: 'budget' }
   const outputBudget = Math.max(1024, new TextEncoder().encode(request.text).length)
   const inputBudget = new TextEncoder().encode(messages.system + messages.user).length + 256
   if (outputBudget > request.maxOutputTokens! || inputBudget + outputBudget > request.contextTokens! * 0.8) return { status: 'incomplete', text: '', error: 'budget' }
-  const url = request.provider === 'glm' ? 'https://open.bigmodel.cn/api/paas/v4/chat/completions' : 'https://api.deepseek.com/chat/completions'
+  const url = request.provider === 'glm' ? 'https://open.bigmodel.cn/api/paas/v4/chat/completions' : request.provider === 'deepseek' ? 'https://api.deepseek.com/chat/completions' : `http://127.0.0.1:${request.gatewayPort}/v1/chat/completions`
   try {
-    const response = await fetcher(url, { method: 'POST', signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${request.key}` }, body: JSON.stringify({ model: request.model, max_tokens: request.maxOutputTokens, ...(request.provider === 'deepseek' ? { thinking: { type: 'disabled' } } : {}), messages: [{ role: 'system', content: messages.system }, { role: 'user', content: messages.user }] }) })
+    const response = await fetcher(url, { method: 'POST', redirect: 'error', signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${request.key}` }, body: JSON.stringify({ model: request.model, max_tokens: request.maxOutputTokens, ...(request.provider === 'deepseek' ? { thinking: { type: 'disabled' } } : {}), messages: [{ role: 'system', content: messages.system }, { role: 'user', content: messages.user }] }) })
     if (!response.ok) {
       let code: string | undefined
       try {
@@ -66,14 +74,14 @@ export async function translate(request: Request, signal: AbortSignal, fetcher: 
         const value = String(body?.error?.code ?? '')
         if (/^\d{1,6}$/.test(value)) code = value
       } catch { /* The status is still useful when the response is not JSON. */ }
-      const glm = request.provider === 'glm'
-      const error = glm && code === '1113' || !glm && response.status === 402 ? 'balance'
+      const glm = request.provider === 'glm', deepseek = request.provider === 'deepseek'
+      const error = glm && code === '1113' || deepseek && response.status === 402 ? 'balance'
         : glm && code === '1211' ? 'model'
         : glm && code === '1315' ? 'plan_key'
         : glm && ['1308', '1309', '1310', '1311', '1313', '1314', '1316', '1317', '1318', '1319', '1320', '1321'].includes(code || '') ? 'quota'
         : glm && code === '1305' ? 'busy'
-        : glm && code === '1302' || !glm && response.status === 429 ? 'rate_limit'
-        : response.status === 401 ? 'credentials'
+        : glm && code === '1302' || deepseek && response.status === 429 ? 'rate_limit'
+        : response.status === 401 || request.provider === 'cherry' && response.status === 403 ? 'credentials'
         : response.status === 429 ? 'rejected' : 'provider'
       return { status: 'incomplete', text: '', error, ...(code ? { code } : {}), httpStatus: response.status }
     }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { matchTerms, makeMessages, translate, detectLanguage } from '../src/main/core'
+import { matchTerms, makeMessages, translate, detectLanguage, gatewayModels } from '../src/main/core'
 
 describe('translation core', () => {
   it('keeps input data out of system instructions and selects relevant terms', () => {
@@ -61,5 +61,29 @@ describe('translation core', () => {
     const result = await translate({ text: 'test', source: 'en', target: 'zh-CN', domain: 'general', context: '', provider: 'glm', model: 'test', key: 'secret', contextTokens: 32000, maxOutputTokens: 8192 }, new AbortController().signal, fetcher)
     expect(result.error).toBe('rejected')
     expect(result.code).toBe('9999')
+  })
+  it('routes one request to the local Cherry gateway using its own key', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: '译文' } }] }), { status: 200 }))
+    const result = await translate({ text: 'Specimen', source: 'en', target: 'zh-CN', domain: 'ivd', context: '', provider: 'cherry', model: 'zhipu:glm-test', key: 'gateway-key', gatewayPort: 23333, contextTokens: 32000, maxOutputTokens: 8192 }, new AbortController().signal, fetcher)
+    expect(result.status).toBe('completed')
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    const [url, options] = fetcher.mock.calls[0]
+    expect(url).toBe('http://127.0.0.1:23333/v1/chat/completions')
+    expect(options.headers.Authorization).toBe('Bearer gateway-key')
+    expect(options.redirect).toBe('error')
+    expect(JSON.parse(options.body).model).toBe('zhipu:glm-test')
+  })
+  it('lists gateway models without invoking a model and rejects redirects', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: [{ id: 'zhipu:glm-test' }, { id: 55 }] }), { status: 200 }))
+    expect(await gatewayModels(23333, 'local', fetcher)).toEqual(['zhipu:glm-test'])
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(fetcher.mock.calls[0][0]).toBe('http://127.0.0.1:23333/v1/models')
+    expect(fetcher.mock.calls[0][1].redirect).toBe('error')
+  })
+  it('rejects invalid Cherry gateway ports without making a request', async () => {
+    const fetcher = vi.fn()
+    const result = await translate({ text: 'Test', source: 'en', target: 'zh-CN', domain: 'general', context: '', provider: 'cherry', model: 'zhipu:glm-test', key: 'local', gatewayPort: 65536, contextTokens: 32000, maxOutputTokens: 8192 }, new AbortController().signal, fetcher)
+    expect(result.error).toBe('invalid_input')
+    expect(fetcher).not.toHaveBeenCalled()
   })
 })

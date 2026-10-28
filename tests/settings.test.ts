@@ -14,4 +14,9 @@ describe('model profiles', () => {
     expect(readProfiles('broken').glm.model).toBe('')
     expect(readProfiles('{"glm":{"model":4}}').glm.model).toBe('')
   })
+  it('keeps Cherry gateway settings separate from cloud profiles', () => {
+    const profiles = saveProfile(readProfiles(null), 'cherry', { model: 'zhipu:glm-test', contextTokens: '32000', maxOutputTokens: '8192', gatewayPort: '23333' })
+    expect(readProfiles(JSON.stringify(profiles)).cherry.gatewayPort).toBe('23333')
+    expect(profiles.glm.model).toBe('')
+  })
 })
