@@ -21,8 +21,10 @@ export function detectLanguage(text: string): Language | null {
   const zh = /[\u3400-\u9fff]/u.test(clean), en = /[a-z]/i.test(clean)
   return zh === en ? null : zh ? 'zh-CN' : 'en'
 }
-export function matchTerms(text: string, source: Language, target: Language, domain: Domain, terms: Term[] = TERMS): Term[] {
-  return terms.filter(t => {
+export function matchTerms(text: string, source: Language, target: Language, domain: Domain, terms: Term[] = TERMS, personal: Term[] = []): Term[] {
+  const entryKey = (t: Term) => [t.source.toLocaleLowerCase(), t.sourceLanguage, t.targetLanguage, t.domain, t.meaning].join('\0')
+  const overrides = new Set(personal.map(entryKey))
+  return [...terms.filter(t => !overrides.has(entryKey(t))), ...personal].filter(t => {
     if (t.domain !== domain || t.sourceLanguage !== source || t.targetLanguage !== target) return false
     const escaped = t.source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const pattern = source === 'en' ? `(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])` : escaped
@@ -42,9 +44,9 @@ export function makeMessages(request: Pick<Request, 'text' | 'source' | 'target'
   const domain = { general: '通用', ivd: 'IVD：区分分析与临床性能、精密度与准确度', computing: '计算机：保留标识符与代码，按语境选术语', internet: '互联网：保留指标口径、比例与百分点' }[request.domain]
   return { system: SYSTEM_PROMPT, user: JSON.stringify({ source_language: request.source, target_language: request.target, domain, ...(request.context ? { context: request.context } : {}), terms: terms.map(({ source, target, meaning }) => ({ source, target, meaning })), source_text: request.text }) }
 }
-export async function translate(request: Request, signal: AbortSignal, fetcher: typeof fetch = fetch): Promise<Result> {
+export async function translate(request: Request, signal: AbortSignal, fetcher: typeof fetch = fetch, personal: Term[] = []): Promise<Result> {
   if (!['glm', 'deepseek'].includes(request.provider) || !request.text.trim() || Array.from(request.text).length > 12000 || request.source === request.target || !request.model.trim() || !request.key) return { status: 'incomplete', text: '', error: 'invalid_input' }
-  const messages = makeMessages(request, matchTerms(request.text, request.source, request.target, request.domain))
+  const messages = makeMessages(request, matchTerms(request.text, request.source, request.target, request.domain, TERMS, personal))
   if (!Number.isSafeInteger(request.contextTokens) || !Number.isSafeInteger(request.maxOutputTokens) || (request.contextTokens || 0) <= 0 || (request.maxOutputTokens || 0) <= 0) return { status: 'incomplete', text: '', error: 'budget' }
   const outputBudget = Math.max(1024, new TextEncoder().encode(request.text).length)
   const inputBudget = new TextEncoder().encode(messages.system + messages.user).length + 256

@@ -12,6 +12,17 @@ describe('translation core', () => {
   it('does not match a word within a longer word', () => {
     expect(matchTerms('controller', 'en', 'zh-CN', 'ivd').some(t => t.source === 'control')).toBe(false)
   })
+  it('uses personal terminology in the matching direction', () => {
+    const personal = [{ source: 'specimen', target: '样本', meaning: '实验室样本', domain: 'ivd' as const, sourceLanguage: 'en' as const, targetLanguage: 'zh-CN' as const }]
+    expect(matchTerms('The specimen is stable.', 'en', 'zh-CN', 'ivd', personal)).toEqual(personal)
+    expect(matchTerms('specimen', 'zh-CN', 'en', 'ivd', personal)).toEqual([])
+  })
+  it('prefers a personal entry for the same source and domain', () => {
+    const personal = [{ source: 'control', target: '质控品', meaning: '依语境可为对照或质控品', domain: 'ivd' as const, sourceLanguage: 'en' as const, targetLanguage: 'zh-CN' as const }]
+    const messages = makeMessages({ text: 'The control was tested.', source: 'en', target: 'zh-CN', domain: 'ivd', context: '' }, matchTerms('The control was tested.', 'en', 'zh-CN', 'ivd', undefined, personal))
+    const terms = JSON.parse(messages.user).terms
+    expect(terms).toEqual([{ source: 'control', target: '质控品', meaning: '依语境可为对照或质控品' }])
+  })
   it('requires explicit direction for mixed input', () => {
     expect(detectLanguage('This 是 mixed')).toBe(null)
     expect(detectLanguage('只包含中文')).toBe('zh-CN')

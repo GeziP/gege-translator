@@ -30,10 +30,11 @@
 
 项目规格和实施计划分别见 [产品 spec](docs/superpowers/specs/2026-10-28-translator-design.md) 与 [实现计划](docs/superpowers/plans/2026-10-28-translator-implementation.md)。
 
-目前已开始桌面界面、模型请求和基础测试。正式发布前仍需完成依赖安装、Windows 构建验证、完整词库及个人术语管理、模型真实联调、评测样本与人工盲评。
+目前已开始桌面界面、模型请求和基础测试，个人术语支持添加和删除。正式发布前仍需完成 Windows 桌面启动与安装包验证、专业术语审核、个人术语编辑与导入导出、模型真实联调、评测样本与人工盲评。
 
 ```powershell
 npm ci
+npx install-electron
 npm run typecheck
 npm test
 npm run build
