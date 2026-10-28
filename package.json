@@ -1,6 +1,6 @@
 {
   "name": "gege-translator",
-  "version": "0.1.0-beta.2",
+  "version": "0.1.0-beta.3",
   "description": "专业领域中英翻译桌面工具",
   "main": "./out/main/index.js",
   "scripts": {

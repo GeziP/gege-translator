@@ -28,7 +28,7 @@ describe('translation core', () => {
     expect(detectLanguage('只包含中文')).toBe('zh-CN')
   })
   it('detects Chinese instructions containing device names and filenames', () => {
-    const text = 'a) SimoaDX 27120004仪器上的STM32F4系列的板子，找到后将ISP跳帽接上，并按下板子的复位按钮，使其进入ISP烧写模式；\nb) 使用FlashMagic 2.0软件，选择通道1，然后选择自动识别出的串口端口；\nc) 在固件选择栏，选择 PC_bootloader_stm32f407vetx_dist_r26.hex；\nd) 点击开始烧写按钮；'
+    const text = 'a) 在设备示例 X100 上找到控制板，接上 ISP 跳帽并按下复位按钮；\nb) 使用 DemoTool 软件，选择通道，然后选择自动识别出的串口；\nc) 在固件选择栏选择 firmware_demo.hex；\nd) 点击开始烧写按钮；'
     expect(detectLanguage(text)).toBe('zh-CN')
     expect(detectLanguage('Please install 软件 and restart the device.')).toBe('en')
     expect(detectLanguage('Model STM32F4')).toBe('en')
