@@ -11,6 +11,7 @@ app.whenReady().then(async () => {
   await mkdir(output, { recursive: true })
   const win = new BrowserWindow({ width: 1440, height: 980, show: true, webPreferences: { preload: join(__dirname, 'screenshot-preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true } })
   await win.loadFile(join(process.cwd(), 'out', 'renderer', 'index.html'))
+  await new Promise(resolve => setTimeout(resolve, 800))
   await win.webContents.executeJavaScript(`(() => {
     const profile = { model: 'glm-5.3-flash', contextTokens: '1000000', maxOutputTokens: '8192' };
     localStorage.setItem('model-profiles', JSON.stringify({ glm: profile }));
