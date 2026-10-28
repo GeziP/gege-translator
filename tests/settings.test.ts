@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readProfiles, saveProfile } from '../src/renderer/src/profiles'
+import { readProfiles, saveProfile, readModelList, saveModel, deleteModel } from '../src/renderer/src/profiles'
 
 describe('model profiles', () => {
   it('preserves a separate model and limits for each provider', () => {
@@ -18,5 +18,14 @@ describe('model profiles', () => {
     const profiles = saveProfile(readProfiles(null), 'cherry', { model: 'zhipu:glm-test', contextTokens: '32000', maxOutputTokens: '8192', gatewayPort: '23333' })
     expect(readProfiles(JSON.stringify(profiles)).cherry.gatewayPort).toBe('23333')
     expect(profiles.glm.model).toBe('')
+  })
+  it('stores multiple models and updates only the selected provider and model', () => {
+    let list = readModelList(null)
+    list = saveModel(list, 'glm', { model: 'one', contextTokens: '10000', maxOutputTokens: '4000' })
+    list = saveModel(list, 'glm', { model: 'two', contextTokens: '20000', maxOutputTokens: '6000' })
+    list = saveModel(list, 'deepseek', { model: 'one', contextTokens: '30000', maxOutputTokens: '8000' })
+    expect(list).toHaveLength(3)
+    expect(deleteModel(list, 'glm', 'one').map(x => `${x.provider}:${x.profile.model}`)).toEqual(['glm:two', 'deepseek:one'])
+    expect(readModelList(JSON.stringify(list))).toEqual(list)
   })
 })

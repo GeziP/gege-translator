@@ -5,6 +5,8 @@ import { gatewayModels, translate, type Request, type Term } from './core'
 import { parseGlossary, serializeGlossary, termKey, validateTerm } from './glossary'
 import { serialWrites } from './writes'
 
+// Keep existing model settings, credentials and terms when the product name changes.
+if (app.isPackaged) app.setPath('userData', join(app.getPath('appData'), 'gege-translator'))
 let window: BrowserWindow | null = null
 const tasks = new Map<string, AbortController>()
 const keys = new Map<string, string>()
@@ -119,7 +121,7 @@ function registerHandlers() {
 app.whenReady().then(() => {
   registerHandlers()
   session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
-  window = new BrowserWindow({ width: 1280, height: 820, minWidth: 840, minHeight: 620, title: '译间', webPreferences: { preload: join(__dirname, '../preload/index.js'), nodeIntegration: false, contextIsolation: true, sandbox: true } })
+  window = new BrowserWindow({ width: 1280, height: 820, minWidth: 840, minHeight: 620, title: '鸽鸽翻译', webPreferences: { preload: join(__dirname, '../preload/index.js'), nodeIntegration: false, contextIsolation: true, sandbox: true } })
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', event => event.preventDefault())
   if (process.argv.includes('--smoke-test')) {

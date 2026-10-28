@@ -1,5 +1,5 @@
 appId: com.gezip.translator
-productName: Gege Translator
+productName: 鸽鸽翻译
 directories:
   output: release
 files:
