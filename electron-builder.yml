@@ -1,0 +1,16 @@
+appId: com.gezip.translator
+productName: Gege Translator
+directories:
+  output: release
+files:
+  - out/**
+  - package.json
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: Gege-Translator-${version}-Windows-${arch}-Setup.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true

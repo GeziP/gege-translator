@@ -1,26 +1,28 @@
 {
   "name": "gege-translator",
-  "version": "0.1.0",
-  "description": "",
+  "version": "0.1.0-beta.1",
+  "description": "专业领域中英翻译桌面工具",
   "main": "./out/main/index.js",
   "directories": {
     "doc": "docs"
   },
   "scripts": {
-    "test": "vitest run tests/core.test.ts && node --test tests/smoke.test.mjs",
+    "test": "vitest run tests/core.test.ts tests/settings.test.ts && node --test tests/smoke.test.mjs",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dist:win": "npm run build && electron-builder --win --x64 --publish never"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "GeziP",
+  "license": "UNLICENSED",
   "type": "commonjs",
   "devDependencies": {
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "electron": "^45.1.0",
+    "electron-builder": "^26.18.0",
     "electron-vite": "^6.0.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

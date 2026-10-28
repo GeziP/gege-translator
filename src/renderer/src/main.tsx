@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { detectLanguage, type Domain, type Language, type Request, type Result, type Term } from '../../main/core'
 import { Terms } from './Terms'
+import { readProfiles, saveProfile } from './profiles'
 import './style.css'
 
 declare global { interface Window { desktop: {
@@ -20,16 +21,15 @@ function App() {
   const [source, setSource] = useState<Language | 'auto'>('auto'), [target, setTarget] = useState<Language>('zh-CN')
   const [domain, setDomain] = useState<Domain>('general'), [context, setContext] = useState('')
   const [provider, setProvider] = useState<Request['provider']>(() => localStorage.getItem('provider') === 'deepseek' ? 'deepseek' : 'glm')
-  const [models, setModels] = useState<Record<Request['provider'], string>>(() => ({ glm: localStorage.getItem('model-glm') || '', deepseek: localStorage.getItem('model-deepseek') || '' }))
-  const model = models[provider]
-  const [contextTokens, setContextTokens] = useState('')
-  const [maxOutputTokens, setMaxOutputTokens] = useState('')
+  const [profiles, setProfiles] = useState(() => readProfiles(localStorage.getItem('model-profiles')))
+  const { model, contextTokens, maxOutputTokens } = profiles[provider]
   const [status, setStatus] = useState('准备就绪'), [busy, setBusy] = useState(false), [settings, setSettings] = useState(false)
   const [showTerms, setShowTerms] = useState(false)
   const [key, setKey] = useState(''), [persist, setPersist] = useState(true), [saved, setSaved] = useState<Record<string, boolean>>({})
   const active = useRef<string | null>(null)
   useEffect(() => { window.desktop.keyStatus().then(setSaved) }, [])
-  useEffect(() => { localStorage.setItem('provider', provider); localStorage.setItem('model-glm', models.glm); localStorage.setItem('model-deepseek', models.deepseek) }, [provider, models])
+  useEffect(() => { localStorage.setItem('provider', provider); localStorage.setItem('model-profiles', JSON.stringify(profiles)) }, [provider, profiles])
+  const updateProfile = (field: 'model' | 'contextTokens' | 'maxOutputTokens', value: string) => setProfiles(previous => saveProfile(previous, provider, { ...previous[provider], [field]: value }))
   const invalidate = () => { if (active.current) { window.desktop.cancel(active.current); active.current = null; setBusy(false); setStatus('已取消；现有译文可能属于之前的原文') } }
   const run = async () => {
     const detected = source === 'auto' ? detectLanguage(text) : source
@@ -60,6 +60,6 @@ function App() {
       <div className="actions"><details><summary>添加翻译背景 <span>可选</span></summary><textarea value={context} onChange={e => { invalidate(); setContext(e.target.value) }} placeholder="例如：体外诊断试剂说明书，面向实验室人员" /></details><div><button className="translate" disabled={busy} onClick={run}>开始翻译 <span>→</span></button>{busy && <button className="cancel" onClick={invalidate}>取消</button>}</div></div>
       <div className="status" role="status" aria-live="polite"><span className="dot"/> {status}</div>
       <footer><span>用恰当的词，传递准确的意思。</span><span>译间 · 专注每一次表达</span></footer>
-    </main>{showTerms && <Terms close={() => setShowTerms(false)} />}{settings && <div className="overlay" onClick={() => setSettings(false)}><aside className="drawer" onClick={e => e.stopPropagation()}><div className="drawer-head"><div><div className="eyebrow">PREFERENCES</div><h2>模型设置</h2></div><button onClick={() => setSettings(false)} aria-label="关闭">✕</button></div><p>配置你的模型服务，翻译内容将发送至所选服务商。</p><label>模型服务<select value={provider} onChange={e => { invalidate(); setProvider(e.target.value as Request['provider']); setKey('') }}><option value="glm">智谱 GLM 标准 API</option><option value="deepseek">DeepSeek</option></select></label><label>模型 ID<input value={model} onChange={e => { invalidate(); setModels(previous => ({ ...previous, [provider]: e.target.value })) }} placeholder="输入服务商提供的模型名称" /></label><label>模型上下文上限（token）<input type="number" value={contextTokens} onChange={e => { invalidate(); setContextTokens(e.target.value) }} placeholder="按服务商文档填写" /></label><label>模型输出上限（token）<input type="number" value={maxOutputTokens} onChange={e => { invalidate(); setMaxOutputTokens(e.target.value) }} placeholder="按服务商文档填写" /></label><label>API Key<input type="password" value={key} onChange={e => setKey(e.target.value)} placeholder={saved[provider] ? '已保存，可输入新密钥替换' : '输入 API Key'} /></label><label className="check"><input type="checkbox" checked={persist} onChange={e => setPersist(e.target.checked)} />使用系统保护保存密钥</label><button className="translate full" onClick={save}>保存密钥</button>{saved[provider] && <button className="delete" onClick={async () => { await window.desktop.deleteKey(provider); setSaved(await window.desktop.keyStatus()); setStatus('密钥已删除') }}>删除已保存密钥</button>}<div className="notice"><strong>关于 GLM Coding Plan</strong><p>本应用使用智谱标准 API，调用费用单独计费，Coding Plan 套餐额度不抵扣。</p></div><p className="fine">翻译只发起一次模型请求。生成完成表示服务已返回，并不代表译文经过核验。</p></aside></div>}</div>
+    </main>{showTerms && <Terms close={() => setShowTerms(false)} />}{settings && <div className="overlay" onClick={() => setSettings(false)}><aside className="drawer" onClick={e => e.stopPropagation()}><div className="drawer-head"><div><div className="eyebrow">PREFERENCES</div><h2>模型设置</h2></div><button onClick={() => setSettings(false)} aria-label="关闭">✕</button></div><p>配置你的模型服务，翻译内容将发送至所选服务商。</p><label>模型服务<select value={provider} onChange={e => { invalidate(); setProvider(e.target.value as Request['provider']); setKey('') }}><option value="glm">智谱 GLM 标准 API</option><option value="deepseek">DeepSeek</option></select></label><label>模型 ID<input value={model} onChange={e => { invalidate(); updateProfile('model', e.target.value) }} placeholder="输入服务商提供的模型名称" /></label><label>模型上下文上限（token）<input type="number" value={contextTokens} onChange={e => { invalidate(); updateProfile('contextTokens', e.target.value) }} placeholder="按服务商文档填写" /></label><label>模型输出上限（token）<input type="number" value={maxOutputTokens} onChange={e => { invalidate(); updateProfile('maxOutputTokens', e.target.value) }} placeholder="按服务商文档填写" /></label><label>API Key<input type="password" value={key} onChange={e => setKey(e.target.value)} placeholder={saved[provider] ? '已保存，可输入新密钥替换' : '输入 API Key'} /></label><label className="check"><input type="checkbox" checked={persist} onChange={e => setPersist(e.target.checked)} />使用系统保护保存密钥</label><button className="translate full" onClick={save}>保存密钥</button>{saved[provider] && <button className="delete" onClick={async () => { await window.desktop.deleteKey(provider); setSaved(await window.desktop.keyStatus()); setStatus('密钥已删除') }}>删除已保存密钥</button>}<div className="notice"><strong>关于 GLM Coding Plan</strong><p>本应用使用智谱标准 API，调用费用单独计费，Coding Plan 套餐额度不抵扣。</p></div><p className="fine">翻译只发起一次模型请求。生成完成表示服务已返回，并不代表译文经过核验。</p></aside></div>}</div>
 }
 createRoot(document.getElementById('root')!).render(<App />)
