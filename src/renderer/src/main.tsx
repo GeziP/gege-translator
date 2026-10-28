@@ -10,8 +10,11 @@ declare global { interface Window { desktop: {
   keyStatus(): Promise<Record<string, boolean>>
   deleteKey(provider: string): Promise<void>
   listTerms(): Promise<Term[]>
-  saveTerm(term: Term): Promise<void>
+  saveTerm(term: Term, index?: number): Promise<void>
   deleteTerm(index: number): Promise<void>
+  previewTerms(): Promise<{ token: string; count: number; conflicts: number; entries: Term[] } | null>
+  confirmTerms(token: string, replace: boolean): Promise<void>
+  exportTerms(): Promise<void>
   translate(id: string, request: Omit<Request, 'key'>): Promise<Result>
   cancel(id: string): Promise<void>
 } } }
