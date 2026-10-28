@@ -45,14 +45,13 @@ export function makeMessages(request: Pick<Request, 'text' | 'source' | 'target'
 export async function translate(request: Request, signal: AbortSignal, fetcher: typeof fetch = fetch): Promise<Result> {
   if (!['glm', 'deepseek'].includes(request.provider) || !request.text.trim() || Array.from(request.text).length > 12000 || request.source === request.target || !request.model.trim() || !request.key) return { status: 'incomplete', text: '', error: 'invalid_input' }
   const messages = makeMessages(request, matchTerms(request.text, request.source, request.target, request.domain))
-  if (request.contextTokens !== undefined && request.maxOutputTokens !== undefined) {
-    const outputBudget = Math.max(1024, new TextEncoder().encode(request.text).length)
-    const inputBudget = new TextEncoder().encode(messages.system + messages.user).length + 256
-    if (outputBudget > request.maxOutputTokens || inputBudget + outputBudget > request.contextTokens * 0.8) return { status: 'incomplete', text: '', error: 'budget' }
-  }
+  if (!Number.isSafeInteger(request.contextTokens) || !Number.isSafeInteger(request.maxOutputTokens) || (request.contextTokens || 0) <= 0 || (request.maxOutputTokens || 0) <= 0) return { status: 'incomplete', text: '', error: 'budget' }
+  const outputBudget = Math.max(1024, new TextEncoder().encode(request.text).length)
+  const inputBudget = new TextEncoder().encode(messages.system + messages.user).length + 256
+  if (outputBudget > request.maxOutputTokens! || inputBudget + outputBudget > request.contextTokens! * 0.8) return { status: 'incomplete', text: '', error: 'budget' }
   const url = request.provider === 'glm' ? 'https://open.bigmodel.cn/api/paas/v4/chat/completions' : 'https://api.deepseek.com/chat/completions'
   try {
-    const response = await fetcher(url, { method: 'POST', signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${request.key}` }, body: JSON.stringify({ model: request.model, messages: [{ role: 'system', content: messages.system }, { role: 'user', content: messages.user }] }) })
+    const response = await fetcher(url, { method: 'POST', signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${request.key}` }, body: JSON.stringify({ model: request.model, max_tokens: request.maxOutputTokens, ...(request.provider === 'deepseek' ? { thinking: { type: 'disabled' } } : {}), messages: [{ role: 'system', content: messages.system }, { role: 'user', content: messages.user }] }) })
     if (!response.ok) return { status: 'incomplete', text: '', error: response.status === 429 ? 'rate_limit' : response.status === 401 ? 'credentials' : 'provider' }
     const data = await response.json() as { choices?: { finish_reason?: string; message?: { content?: string; refusal?: string } }[]; usage?: unknown }
     const choice = data.choices?.[0], text = typeof choice?.message?.content === 'string' ? choice.message.content : ''

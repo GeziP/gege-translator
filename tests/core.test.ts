@@ -18,8 +18,11 @@ describe('translation core', () => {
   })
   it('makes one request and reports truncation without retrying', async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ finish_reason: 'length', message: { content: '部分' } }] }), { status: 200 }))
-    const result = await translate({ text: 'Test', source: 'en', target: 'zh-CN', domain: 'general', context: '', provider: 'deepseek', model: 'test', key: 'secret' }, new AbortController().signal, fetcher)
+    const result = await translate({ text: 'Test', source: 'en', target: 'zh-CN', domain: 'general', context: '', provider: 'deepseek', model: 'test', key: 'secret', contextTokens: 32000, maxOutputTokens: 8192 }, new AbortController().signal, fetcher)
     expect(fetcher).toHaveBeenCalledTimes(1)
+    const body = JSON.parse(fetcher.mock.calls[0][1].body as string)
+    expect(body.max_tokens).toBe(8192)
+    expect(body.thinking).toEqual({ type: 'disabled' })
     expect(result.status).toBe('incomplete')
     expect(result.error).toBe('truncated')
   })

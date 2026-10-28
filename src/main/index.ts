@@ -27,10 +27,10 @@ function registerHandlers() {
   })
   handle('save-key', async (provider: string, key: string, persist: boolean) => {
     if (!validProvider(provider) || typeof key !== 'string' || key.length > 4096) throw new Error('Invalid configuration')
-    if (persist && safeStorage.isEncryptionAvailable()) {
+    if (persist && await safeStorage.isAsyncEncryptionAvailable()) {
       try {
         const data = await readStore()
-        data[provider] = safeStorage.encryptString(key).toString('base64')
+        data[provider] = (await safeStorage.encryptStringAsync(key)).toString('base64')
         await saveStore(data)
         keys.set(provider, key)
         return { persisted: true }
@@ -52,7 +52,7 @@ function registerHandlers() {
     if (typeof id !== 'string' || id.length > 100 || tasks.has(id) || !request || !validProvider(request.provider) || typeof request.text !== 'string' || typeof request.model !== 'string' || typeof request.context !== 'string' || !['en', 'zh-CN'].includes(request.source) || !['en', 'zh-CN'].includes(request.target) || !['general', 'ivd', 'computing', 'internet'].includes(request.domain)) return { status: 'incomplete', text: '', error: 'invalid_input' }
     let key = keys.get(request.provider)
     if (!key) {
-      try { const data = await readStore(); if (data[request.provider] && safeStorage.isEncryptionAvailable()) key = safeStorage.decryptString(Buffer.from(data[request.provider], 'base64')) } catch { return { status: 'incomplete', text: '', error: 'credentials' } }
+      try { const data = await readStore(); if (data[request.provider] && await safeStorage.isAsyncEncryptionAvailable()) key = (await safeStorage.decryptStringAsync(Buffer.from(data[request.provider], 'base64'))).result } catch { return { status: 'incomplete', text: '', error: 'credentials' } }
     }
     if (!key) return { status: 'incomplete', text: '', error: 'credentials' }
     const controller = new AbortController(); tasks.set(id, controller)

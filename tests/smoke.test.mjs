@@ -13,7 +13,7 @@ test('input remains data and terms match word boundaries', () => {
 test('truncated response causes no automatic retry', async () => {
   let calls = 0
   const fetcher = async () => { calls++; return new Response(JSON.stringify({ choices: [{ finish_reason: 'length', message: { content: '部分' } }] })) }
-  const result = await translate({ text: 'Test', source: 'en', target: 'zh-CN', domain: 'general', context: '', provider: 'deepseek', model: 'test', key: 'secret' }, new AbortController().signal, fetcher)
+  const result = await translate({ text: 'Test', source: 'en', target: 'zh-CN', domain: 'general', context: '', provider: 'deepseek', model: 'test', key: 'secret', contextTokens: 32000, maxOutputTokens: 8192 }, new AbortController().signal, fetcher)
   assert.equal(calls, 1)
   assert.equal(result.status, 'incomplete')
 })
@@ -35,6 +35,13 @@ test('does not send to an unknown provider', async () => {
 test('does not send when configured context budget is insufficient', async () => {
   let calls = 0
   const result = await translate({ text: 'test', source: 'en', target: 'zh-CN', domain: 'general', context: '', provider: 'deepseek', model: 'test', key: 'secret', contextTokens: 100, maxOutputTokens: 100 }, new AbortController().signal, async () => { calls++; return new Response() })
+  assert.equal(calls, 0)
+  assert.equal(result.error, 'budget')
+})
+
+test('does not send when model limits are not configured', async () => {
+  let calls = 0
+  const result = await translate({ text: 'test', source: 'en', target: 'zh-CN', domain: 'general', context: '', provider: 'deepseek', model: 'test', key: 'secret' }, new AbortController().signal, async () => { calls++; return new Response() })
   assert.equal(calls, 0)
   assert.equal(result.error, 'budget')
 })
